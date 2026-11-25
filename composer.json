@@ -1,0 +1,23 @@
+{
+    "name": "txtgrep/txtgrep",
+    "description": "PostgreSQL-backed full-text search and chapter reader for large text corpora",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.1",
+        "ext-pdo": "*",
+        "ext-pdo_pgsql": "*",
+        "ext-mbstring": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "TxtGrep\\": "src/"
+        }
+    },
+    "scripts": {
+        "setup": "@php bin/setup.php",
+        "index": "@php bin/index.php",
+        "test": "@php tests/run.php",
+        "lint": "@php tests/run.php"
+    }
+}
