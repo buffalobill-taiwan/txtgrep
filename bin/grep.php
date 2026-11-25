@@ -6,6 +6,7 @@ require dirname(__DIR__) . '/src/bootstrap.php';
 
 use TxtGrep\Config;
 use TxtGrep\Paths;
+use TxtGrep\Reader;
 use TxtGrep\Search;
 use TxtGrep\SearchValidationException;
 
@@ -101,6 +102,7 @@ if ($json) {
         $rows[] = [
             'file' => $path,
             'book' => Paths::book($path),
+            'url' => Reader::url($path),
             'line' => (int) $row['line_number'],
             'text' => $row['content'],
             'inode' => $row['inode'] === null ? '' : (string) $row['inode'],

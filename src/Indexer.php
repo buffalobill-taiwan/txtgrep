@@ -11,12 +11,27 @@ use Throwable;
 final class Indexer
 {
     private const BATCH_SIZE = 1000;
+    private const LOCK_KEY = 1415074887; // Stable database-wide key for txtgrep indexing.
 
     /**
      * @param string[] $books Empty means every book in the corpus.
      * @return array<string, int|float|string[]>
      */
     public function run(bool $full = false, bool $hashCheck = false, array $books = []): array
+    {
+        $pdo = Database::get();
+        if (!$pdo->query('SELECT pg_try_advisory_lock(' . self::LOCK_KEY . ')')->fetchColumn()) {
+            throw new RuntimeException('Another indexing run is already in progress.');
+        }
+
+        try {
+            return $this->index($full, $hashCheck, $books);
+        } finally {
+            $pdo->query('SELECT pg_advisory_unlock(' . self::LOCK_KEY . ')');
+        }
+    }
+
+    private function index(bool $full, bool $hashCheck, array $books): array
     {
         $config = Config::get();
         $corpus = $config->corpus();
@@ -45,6 +60,7 @@ final class Indexer
 
         $findFile = Database::get()->prepare('SELECT size, mtime, hash FROM files WHERE path = :path');
         $markSeen = Database::get()->prepare('UPDATE files SET seen_run = :run, inode = :inode WHERE path = :path');
+        $preserve = Database::get()->prepare('UPDATE files SET seen_run = :run WHERE path = :path');
         $upsert = Database::get()->prepare(
             'INSERT INTO files (path, size, mtime, inode, hash, seen_run, indexed_at)
              VALUES (:path, :size, :mtime, :inode, :hash, :run, now())
@@ -77,6 +93,7 @@ final class Indexer
                 $mtime = filemtime($absolute);
                 $inode = fileinode($absolute);
                 if ($size === false || $mtime === false || $inode === false) {
+                    $preserve->execute(['run' => $run, 'path' => $relative]);
                     fwrite(STDERR, "Cannot stat {$relative}\n");
                     $failedFiles++;
                     continue;
@@ -87,8 +104,10 @@ final class Indexer
                 $unchanged = !$full && $existing !== false
                     && (int) $existing['size'] === $size
                     && (int) $existing['mtime'] === $mtime;
-                if ($unchanged && $hashCheck && is_string($existing['hash']) && $existing['hash'] !== '') {
-                    $unchanged = hash_file('sha256', $absolute) === $existing['hash'];
+                $hash = null;
+                if ($unchanged && $hashCheck) {
+                    $hash = hash_file('sha256', $absolute);
+                    $unchanged = $hash !== false && $hash === $existing['hash'];
                 }
                 if ($unchanged) {
                     $markSeen->execute(['run' => $run, 'inode' => (string) $inode, 'path' => $relative]);
@@ -96,8 +115,9 @@ final class Indexer
                     continue;
                 }
 
-                $hash = hash_file('sha256', $absolute);
+                $hash ??= hash_file('sha256', $absolute);
                 if ($hash === false) {
+                    $preserve->execute(['run' => $run, 'path' => $relative]);
                     fwrite(STDERR, "Cannot hash {$relative}\n");
                     $failedFiles++;
                     continue;
@@ -121,30 +141,32 @@ final class Indexer
                     }
                     $lineNumber = 0;
                     $batch = [];
-                    while (($line = fgets($handle)) !== false) {
-                        $lineNumber++;
-                        $batch[] = [$lineNumber, Text::scrub(rtrim($line, "\r\n"))];
-                        if (count($batch) >= self::BATCH_SIZE) {
-                            self::insertBatch($relative, $batch);
-                            $indexedLines += count($batch);
-                            $batch = [];
+                    try {
+                        while (($line = fgets($handle)) !== false) {
+                            $lineNumber++;
+                            $batch[] = [$lineNumber, Text::scrub(rtrim($line, "\r\n"))];
+                            if (count($batch) >= self::BATCH_SIZE) {
+                                self::insertBatch($relative, $batch);
+                                $batch = [];
+                            }
                         }
+                        $complete = feof($handle);
+                    } finally {
+                        fclose($handle);
                     }
-                    $complete = feof($handle);
-                    fclose($handle);
                     if (!$complete) {
                         throw new RuntimeException("Cannot finish reading {$relative}");
                     }
                     self::insertBatch($relative, $batch);
-                    $indexedLines += count($batch);
                     Database::get()->commit();
+                    $indexedLines += $lineNumber;
                     $indexedFiles++;
                 } catch (Throwable $error) {
                     if (Database::get()->inTransaction()) {
                         Database::get()->rollBack();
                     }
                     // Keep the previous index for this file instead of dropping it.
-                    $markSeen->execute(['run' => $run, 'inode' => (string) $inode, 'path' => $relative]);
+                    $preserve->execute(['run' => $run, 'path' => $relative]);
                     fwrite(STDERR, "Failed {$relative}: " . $error->getMessage() . "\n");
                     $failedFiles++;
                 }
@@ -152,7 +174,7 @@ final class Indexer
             fwrite(STDERR, "Done: {$book}\n");
         }
 
-        $removedFiles = self::deleteStale($run, $books === [] ? [] : $selected, $failedBooks);
+        $removedFiles = self::deleteStale($run, $selected, $failedBooks, $books === []);
         $seconds = (hrtime(true) - $startedAt) / 1_000_000_000;
 
         return [
@@ -189,31 +211,24 @@ final class Indexer
         $stmt->execute($params);
     }
 
-    /**
-     * A full run may remove books that no longer exist. A scoped run must never
-     * delete rows belonging to other books.
-     *
-     * @param string[] $scopedBooks Books explicitly requested on the command line.
-     * @param string[] $failedBooks Books that could not be scanned this run.
-     */
-    private static function deleteStale(string $run, array $scopedBooks, array $failedBooks): int
+    /** Delete stale rows only within the current prefix and successfully scanned scope. */
+    private static function deleteStale(string $run, array $selected, array $failedBooks, bool $allBooks): int
     {
-        $pdo = Database::get();
-        if ($scopedBooks === [] && $failedBooks === []) {
-            $stmt = $pdo->prepare('DELETE FROM files WHERE seen_run IS DISTINCT FROM :run');
-            $stmt->execute(['run' => $run]);
-            return $stmt->rowCount();
+        $root = Paths::prefix() . '/';
+        $prefixes = [];
+        if ($allBooks && $failedBooks === []) {
+            $prefixes[] = $root;
+        } else {
+            foreach (array_diff($selected, $failedBooks) as $book) {
+                $prefixes[] = $root . $book . '/';
+            }
         }
 
+        $stmt = Database::get()->prepare(
+            'DELETE FROM files WHERE left(path, :len) = :prefix AND seen_run IS DISTINCT FROM :run'
+        );
         $removed = 0;
-        foreach ($scopedBooks as $book) {
-            if (in_array($book, $failedBooks, true)) {
-                continue;
-            }
-            $prefix = Paths::prefix() . '/' . $book . '/';
-            $stmt = $pdo->prepare(
-                'DELETE FROM files WHERE left(path, :len) = :prefix AND seen_run IS DISTINCT FROM :run'
-            );
+        foreach ($prefixes as $prefix) {
             $stmt->execute(['len' => mb_strlen($prefix, 'UTF-8'), 'prefix' => $prefix, 'run' => $run]);
             $removed += $stmt->rowCount();
         }

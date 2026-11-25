@@ -55,7 +55,6 @@ final class Search
                 $source = substr($source, strlen($prefix));
             }
             if (str_contains($source, '/') || str_contains($source, '\\')
-                || str_contains($source, '%') || str_contains($source, '_')
                 || str_contains($source, "\0")) {
                 throw new SearchValidationException('書目無效。');
             }

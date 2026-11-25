@@ -60,6 +60,29 @@ docker compose up -d --build
 
 複製 `.env.example` 為 `.env` 後可調整 `TXTGREP_DB_NAME`、`TXTGREP_DB_USER`、`TXTGREP_DB_PASSWORD`、`TXTGREP_PORT`。容器啟動時會自動執行 `bin/setup.php` 與增量 `bin/index.php`，然後在 <http://127.0.0.1:8083/> 提供服務。
 
+### 舊版 Compose 掛載移轉
+
+PostgreSQL 18 的命名卷掛載點已改為 `/var/lib/postgresql`。若現有容器使用舊掛載設定，請在重建前從仍可連線的資料庫匯出備份。先停止 app 與其他寫入者，保持 db 運作：
+
+```sh
+docker compose stop app
+docker compose exec -T db sh -c 'pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > txtgrep-before-mount-change.dump
+docker compose exec -T db pg_restore --list < txtgrep-before-mount-change.dump
+docker compose exec -T db sh -c 'psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT (SELECT count(*) FROM files) AS files, (SELECT count(*) FROM file_lines) AS lines"'
+```
+
+如果舊容器已無法啟動，先保留現有資料卷，使用與資料目錄相容的 PostgreSQL 映像與原本的 `PGDATA` 恢復連線，再執行匯出。
+
+確認匯出成功、備份清單包含 `files` 和 `file_lines`，並記下筆數和舊容器實際使用的資料卷。套用新版 Compose 設定後，只重建 db，等健康檢查通過再還原：
+
+```sh
+docker compose up -d --wait --force-recreate db
+docker compose exec -T db sh -c 'pg_restore --exit-on-error --single-transaction -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < txtgrep-before-mount-change.dump
+docker compose exec -T db sh -c 'psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT (SELECT count(*) FROM files) AS files, (SELECT count(*) FROM file_lines) AS lines"'
+```
+
+還原目標應為新初始化的空資料庫。確認筆數與備份前相同後，再用 `docker compose up -d --build app` 啟動應用程式。驗證完成前保留備份與舊資料卷。
+
 ## 設定
 
 真正的環境變數優先於 `.env`。
@@ -97,9 +120,10 @@ php bin/index.php --full              # 全部重建
 php bin/index.php 西遊記               # 只處理一部；不會誤刪其他書
 ```
 
-- 每次執行會用 run token 清掉本次沒看到的章節（含旗下 lines）。
+- 同一資料庫已有索引執行中時，新的索引程序會立即結束並回傳狀態碼 `1`。
+- 清理限於目前路徑前綴及成功掃描的範圍。
 - 只指定部分書目時，清理範圍也只限那些書目。
-- 單一檔案以 transaction 重建；失敗時保留舊索引並繼續處理其他檔案。
+- 單一檔案以 transaction 重建。取得檔案資訊、讀取雜湊或重建失敗時保留舊索引，並繼續處理其他檔案。
 - 無效 UTF-8 bytes 會被轉成 U+FFFD，行號仍與原檔一致。
 
 ## CLI
