@@ -11,6 +11,7 @@ use Throwable;
 final class Indexer
 {
     private const BATCH_SIZE = 1000;
+    private const SEEN_BATCH_SIZE = 500;
     private const LOCK_KEY = 1415074887; // Stable database-wide key for txtgrep indexing.
 
     /**
@@ -33,6 +34,7 @@ final class Indexer
 
     private function index(bool $full, bool $hashCheck, array $books): array
     {
+        clearstatcache(true);
         $config = Config::get();
         $corpus = realpath($config->corpus());
         if ($corpus === false) {
@@ -72,8 +74,17 @@ final class Indexer
         $failedFiles = 0;
         $failedBooks = [];
 
-        $findFile = Database::get()->prepare('SELECT size, mtime, hash FROM files WHERE path = :path');
-        $markSeen = Database::get()->prepare('UPDATE files SET seen_run = :run, inode = :inode WHERE path = :path');
+        $root = Paths::prefix() . '/';
+        $existingStmt = Database::get()->prepare(
+            'SELECT path, size, mtime, hash FROM files WHERE left(path, :len) = :root'
+        );
+        $existingStmt->execute(['len' => mb_strlen($root, 'UTF-8'), 'root' => $root]);
+        $existingByPath = [];
+        foreach ($existingStmt->fetchAll() as $row) {
+            $existingByPath[(string) $row['path']] = $row;
+        }
+
+        $seenUpdates = [];
         $preserve = Database::get()->prepare('UPDATE files SET seen_run = :run WHERE path = :path');
         $upsert = Database::get()->prepare(
             'INSERT INTO files (path, size, mtime, inode, hash, seen_run, indexed_at)
@@ -86,7 +97,6 @@ final class Indexer
 
         foreach ($selected as $book) {
             $directory = $corpus . '/' . $book;
-            clearstatcache(true);
             $resolvedDirectory = realpath($directory);
             if ($resolvedDirectory !== false && !Paths::inside($resolvedDirectory, $corpus)) {
                 continue;
@@ -106,12 +116,19 @@ final class Indexer
 
             foreach ($chapters as $chapter) {
                 $relative = Paths::logical($book, $chapter);
-                clearstatcache(true);
-                $candidate = realpath($resolvedDirectory . '/' . $chapter);
-                if ($candidate !== false && (!Paths::inside($candidate, $corpus) || !is_file($candidate))) {
-                    continue;
+                $absolute = $resolvedDirectory . '/' . $chapter;
+                if (is_link($absolute)) {
+                    $resolved = realpath($absolute);
+                    if ($resolved !== false && (!Paths::inside($resolved, $corpus) || !is_file($resolved))) {
+                        continue;
+                    }
+                    $absolute = $resolved === false ? null : $resolved;
+                } elseif (!is_file($absolute)) {
+                    if (is_dir($absolute)) {
+                        continue;
+                    }
+                    $absolute = null;
                 }
-                $absolute = Paths::absolute($relative);
                 $size = $absolute === null ? false : @filesize($absolute);
                 $mtime = $absolute === null ? false : @filemtime($absolute);
                 $inode = $absolute === null ? false : @fileinode($absolute);
@@ -122,8 +139,7 @@ final class Indexer
                     continue;
                 }
 
-                $findFile->execute(['path' => $relative]);
-                $existing = $findFile->fetch();
+                $existing = $existingByPath[$relative] ?? false;
                 $unchanged = !$full && $existing !== false
                     && (int) $existing['size'] === $size
                     && (int) $existing['mtime'] === $mtime;
@@ -133,7 +149,7 @@ final class Indexer
                     $unchanged = $hash !== false && $hash === $existing['hash'];
                 }
                 if ($unchanged) {
-                    $markSeen->execute(['run' => $run, 'inode' => (string) $inode, 'path' => $relative]);
+                    $seenUpdates[$relative] = (string) $inode;
                     $skippedFiles++;
                     continue;
                 }
@@ -197,6 +213,7 @@ final class Indexer
             fwrite(STDERR, "Done: {$book}\n");
         }
 
+        self::markSeenBatch($seenUpdates, $run);
         $removedFiles = self::deleteStale($run, $selected, $failedBooks, $books === []);
         $seconds = (hrtime(true) - $startedAt) / 1_000_000_000;
 
@@ -232,6 +249,29 @@ final class Indexer
             'INSERT INTO file_lines (file_path, line_number, content) VALUES ' . implode(', ', $tuples)
         );
         $stmt->execute($params);
+    }
+
+    /** @param array<string, string> $updates logical path => inode */
+    private static function markSeenBatch(array $updates, string $run): void
+    {
+        foreach (array_chunk($updates, self::SEEN_BATCH_SIZE, true) as $chunk) {
+            $tuples = [];
+            $params = ['run' => $run];
+            $index = 0;
+            foreach ($chunk as $path => $inode) {
+                $pathParam = ':p' . $index;
+                $inodeParam = ':i' . $index;
+                $tuples[] = "({$pathParam}, {$inodeParam})";
+                $params[$pathParam] = $path;
+                $params[$inodeParam] = $inode;
+                $index++;
+            }
+            Database::get()->prepare(
+                'UPDATE files AS f SET seen_run = :run, inode = v.inode '
+                . 'FROM (VALUES ' . implode(', ', $tuples) . ') AS v(path, inode) '
+                . 'WHERE f.path = v.path'
+            )->execute($params);
+        }
     }
 
     /** Delete stale rows only within the current prefix and successfully scanned scope. */
