@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
+use TxtGrep\Paths;
 use TxtGrep\Reader;
 
 $fileParam = $_REQUEST['file'] ?? '';
@@ -36,36 +37,45 @@ $first = array_shift($content);
     <link rel="stylesheet" href="css/uikit.min.css" />
     <link rel="stylesheet" href="css/nouislider.css" />
     <link rel="stylesheet" href="css/index.css?<?=filemtime(__DIR__ . '/css/index.css') ?: 1 ?>" />
-    <style>
-        body { writing-mode: vertical-rl; line-break: normal; font-size: 1.5em; }
-        p { text-indent: 2em; padding: 0.5em; }
-        h1 { text-indent: 0; text-align: center; padding: 0.5em; }
-    </style>
+    <link rel="stylesheet" href="css/reader.css?<?=filemtime(__DIR__ . '/css/reader.css') ?: 1 ?>" />
     <script src="js/uikit.min.js"></script>
     <script src="js/uikit-icons.min.js"></script>
     <script src="js/wNumb.min.js"></script>
     <script src="js/nouislider.js"></script>
-    <script src="js/rtlwheel.js"></script>
+    <script src="js/reader.js?<?=filemtime(__DIR__ . '/js/reader.js') ?: 1 ?>" defer></script>
     <script src="js/cash.min.js"></script>
     <script src="js/index.js?<?=filemtime(__DIR__ . '/js/index.js') ?: 1 ?>"></script>
 </head>
 <body>
-    <?php if ($first !== null): ?>
-        <h1 class="uk-heading"><?=htmlspecialchars($first, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></h1>
-    <?php endif; ?>
-    <?php foreach ($content as $line): ?>
-        <p class="uk-text"><?=htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></p>
-    <?php endforeach; ?>
-    <p class="half"> </p>
-    <?php if ($previous !== null || $next !== null): ?>
-        <div class="uk-margin uk-margin-left uk-flex uk-flex-around">
-            <?php if ($previous !== null): ?>
-                <div><a href="<?=htmlspecialchars(Reader::url($previous['path'], $previous['id']), ENT_QUOTES)?>">上一章</a></div>
-            <?php endif; ?>
-            <?php if ($next !== null): ?>
-                <div><a href="<?=htmlspecialchars(Reader::url($next['path'], $next['id']), ENT_QUOTES)?>">下一章</a></div>
-            <?php endif; ?>
-        </div>
-    <?php endif; ?>
+    <main class="reader">
+        <?php if ($first !== null): ?>
+            <h1 class="reader-title"><?=htmlspecialchars($first, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></h1>
+        <?php endif; ?>
+        <?php foreach ($content as $line): ?>
+            <p class="reader-paragraph"><?=htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></p>
+        <?php endforeach; ?>
+        <?php if ($previous !== null || $next !== null): ?>
+            <nav class="reader-nav" aria-label="章節導覽">
+                <?php if ($previous !== null): ?>
+                    <a class="reader-nav-link" rel="prev"
+                       aria-label="<?=htmlspecialchars('上一章：' . Paths::label($previous['path'], false), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?>"
+                       title="<?=htmlspecialchars(Paths::label($previous['path'], false), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?>"
+                       href="<?=htmlspecialchars(Reader::url($previous['path'], $previous['id']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?>">
+                        <span class="reader-nav-label">↑ 上一章</span>
+                        <span class="reader-nav-title"><?=htmlspecialchars(Paths::label($previous['path'], false), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></span>
+                    </a>
+                <?php endif; ?>
+                <?php if ($next !== null): ?>
+                    <a class="reader-nav-link reader-nav-next" rel="next"
+                       aria-label="<?=htmlspecialchars('下一章：' . Paths::label($next['path'], false), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?>"
+                       title="<?=htmlspecialchars(Paths::label($next['path'], false), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?>"
+                       href="<?=htmlspecialchars(Reader::url($next['path'], $next['id']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?>">
+                        <span class="reader-nav-label">↓ 下一章</span>
+                        <span class="reader-nav-title"><?=htmlspecialchars(Paths::label($next['path'], false), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></span>
+                    </a>
+                <?php endif; ?>
+            </nav>
+        <?php endif; ?>
+    </main>
 </body>
 </html>
