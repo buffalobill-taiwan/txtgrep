@@ -10,16 +10,12 @@ function initIndex() {
     }
 }
 
-function initLink() {
-    initBtnScrollToTop();
-}
-
 function initBtnScrollToTop() {
     const button = document.querySelector('#btnScrollToTop');
     if (!button) return;
 
     button.addEventListener('click', () => window.scrollTo(0, 0));
-    const update = () => $(button).toggle(window.scrollY > 20);
+    const update = () => button.classList.toggle('uk-hidden', window.scrollY <= 20);
     window.addEventListener('scroll', update, { passive: true });
     update();
 }
@@ -35,7 +31,8 @@ async function search() {
     const modal = UIkit.modal('#loading-dialog');
     button.disabled = true;
     status.textContent = '';
-    table.replaceChildren();
+    table.querySelectorAll('tbody').forEach((body) => body.remove());
+    table.tHead.classList.add('uk-hidden');
 
     const startedAt = performance.now();
     async function waitForMinimumLoadingTime() {
@@ -76,16 +73,21 @@ async function search() {
 function renderResults(table, results) {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
-    const body = document.createElement('tbody');
+    const body = table.createTBody();
     for (const item of results) {
         const row = body.insertRow();
-        const chapter = row.insertCell();
-        chapter.className = 'td-file uk-width-small';
+        const chapter = document.createElement('th');
+        chapter.scope = 'row';
+        chapter.className = 'td-file uk-text-top';
+        row.append(chapter);
         if (item.ref && (item.url || item.inode)) {
             const link = document.createElement('a');
+            link.className = 'uk-text-nowrap uk-text-large';
             link.href = item.url || ('reader.php?inode=' + encodeURIComponent(item.inode));
             link.target = '_blank';
-            link.rel = 'noopener';
+            link.rel = 'noopener noreferrer';
+            link.title = '在新分頁開啟';
+            link.setAttribute('aria-label', '在新分頁開啟：' + item.file);
             link.textContent = item.file;
             chapter.append(link);
         } else {
@@ -103,7 +105,7 @@ function renderResults(table, results) {
             if (matchEnd <= end) continue;
             if (offset > end) passage.append(slice(end, offset));
             const highlight = document.createElement('span');
-            highlight.className = 'highlight';
+            highlight.className = 'uk-text-danger';
             highlight.textContent = slice(Math.max(end, offset), matchEnd);
             passage.append(highlight);
             end = matchEnd;
@@ -111,4 +113,5 @@ function renderResults(table, results) {
         passage.append(slice(end));
     }
     table.append(body);
+    table.tHead.classList.toggle('uk-hidden', results.length === 0);
 }

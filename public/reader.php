@@ -34,17 +34,8 @@ $first = array_shift($content);
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?=htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></title>
-    <link rel="stylesheet" href="css/uikit.min.css" />
-    <link rel="stylesheet" href="css/nouislider.css" />
-    <link rel="stylesheet" href="css/index.css?<?=filemtime(__DIR__ . '/css/index.css') ?: 1 ?>" />
-    <link rel="stylesheet" href="css/reader.css?<?=filemtime(__DIR__ . '/css/reader.css') ?: 1 ?>" />
-    <script src="js/uikit.min.js"></script>
-    <script src="js/uikit-icons.min.js"></script>
-    <script src="js/wNumb.min.js"></script>
-    <script src="js/nouislider.js"></script>
+    <link rel="stylesheet" href="css/reader.css?<?=filemtime(__DIR__ . '/css/reader.css') ?: 1 ?>">
     <script src="js/reader.js?<?=filemtime(__DIR__ . '/js/reader.js') ?: 1 ?>" defer></script>
-    <script src="js/cash.min.js"></script>
-    <script src="js/index.js?<?=filemtime(__DIR__ . '/js/index.js') ?: 1 ?>"></script>
 </head>
 <body>
     <main class="reader">

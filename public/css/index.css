@@ -2,42 +2,27 @@ html {
     background-color: honeydew;
 }
 
-span.highlight{
-    color: red;
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
-td.td-file{
+main h1 {
+    font-size: 1.3em;
+}
+
+.uk-table .td-file {
     color: purple;
 }
 
-a{
-    white-space:nowrap;
-}
-
 #btnScrollToTop {
-  display: none; /* Hidden by default */
-  position: fixed; /* Fixed/sticky position */
-  bottom: 1em; /* Place the button at the bottom of the page */
-  right: 2em; /* Place the button 30px from the right */
-  z-index: 99; /* Make sure it does not overlap */
-  border: none; /* Remove borders */
-  outline: none; /* Remove outline */
-  background-color: CornflowerBlue; /* Set a background color */
-  color: white; /* Text color */
-  cursor: pointer; /* Add a mouse pointer on hover */
-  padding: 0.5em; /* Some padding */
-  border-radius: 0.5em; /* Rounded corners */
-  font-size: 1em; /* Increase font size */
-}
-
-#btnScrollToTop:hover {
-  background-color: LightGray; /* Add a dark-grey background on hover */
-}
-
-#slider{
-    margin-left: 5em;
-}
-
-.half{
-    margin-left: 10vw;
+    z-index: 99;
+    margin: 0 2em 1em 0;
 }
