@@ -53,7 +53,7 @@ $first = array_shift($content);
                        aria-label="<?=htmlspecialchars('上一章：' . Paths::label($previous['path'], false), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?>"
                        title="<?=htmlspecialchars(Paths::label($previous['path'], false), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?>"
                        href="<?=htmlspecialchars(Reader::url($previous['path'], $previous['id']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?>">
-                        <span class="reader-nav-label">↑ 上一章</span>
+                        <span class="reader-nav-label" aria-hidden="true">↑</span>
                         <span class="reader-nav-title"><?=htmlspecialchars(Paths::label($previous['path'], false), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></span>
                     </a>
                 <?php endif; ?>
@@ -62,7 +62,7 @@ $first = array_shift($content);
                        aria-label="<?=htmlspecialchars('下一章：' . Paths::label($next['path'], false), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?>"
                        title="<?=htmlspecialchars(Paths::label($next['path'], false), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?>"
                        href="<?=htmlspecialchars(Reader::url($next['path'], $next['id']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?>">
-                        <span class="reader-nav-label">↓ 下一章</span>
+                        <span class="reader-nav-label" aria-hidden="true">↓</span>
                         <span class="reader-nav-title"><?=htmlspecialchars(Paths::label($next['path'], false), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></span>
                     </a>
                 <?php endif; ?>
