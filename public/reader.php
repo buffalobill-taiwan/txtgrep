@@ -33,6 +33,7 @@ $first = array_shift($content);
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
     <title><?=htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></title>
     <link rel="stylesheet" href="css/reader.css?<?=filemtime(__DIR__ . '/css/reader.css') ?: 1 ?>">
     <script src="js/reader.js?<?=filemtime(__DIR__ . '/js/reader.js') ?: 1 ?>" defer></script>

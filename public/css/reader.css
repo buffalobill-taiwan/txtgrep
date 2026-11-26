@@ -100,3 +100,36 @@ body {
   text-overflow: ellipsis;
   font-weight: 600;
 }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    background-color: #16181c;
+  }
+
+  .reader {
+    color: #e6e6e6;
+  }
+
+  .reader-nav-link {
+    border-color: rgba(255, 255, 255, 0.18);
+    background: rgba(38, 41, 47, 0.92);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    color: #e6e6e6;
+  }
+
+  .reader-nav-link:hover,
+  .reader-nav-link:focus-visible {
+    background: #2f343b;
+    box-shadow: 0 5px 16px rgba(0, 0, 0, 0.5);
+    color: #7ab4ff;
+  }
+
+  .reader-nav-label {
+    color: #9aa0a6;
+  }
+}

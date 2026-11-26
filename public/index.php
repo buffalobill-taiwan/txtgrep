@@ -14,6 +14,7 @@ $keyword = is_string($keyword) ? $keyword : '';
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
     <title>全文檢索 | txtgrep</title>
     <link rel="stylesheet" href="css/uikit.min.css">
     <link rel="stylesheet" href="css/nouislider.css">
