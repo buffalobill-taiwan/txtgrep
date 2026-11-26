@@ -99,13 +99,16 @@ if ($json) {
     $rows = [];
     foreach ($found['rows'] as $row) {
         $path = (string) $row['file_path'];
+        $fileId = is_numeric($row['file_id'] ?? null) ? (int) $row['file_id'] : null;
+        $inode = $row['inode'] === null ? '' : (string) $row['inode'];
         $rows[] = [
             'file' => $path,
             'book' => Paths::book($path),
-            'url' => Reader::url($path),
+            'url' => Reader::url($path, $fileId, $inode),
             'line' => (int) $row['line_number'],
             'text' => $row['content'],
-            'inode' => $row['inode'] === null ? '' : (string) $row['inode'],
+            'file_id' => $fileId,
+            'inode' => $inode,
             'matches' => Search::matchOffsets($row['content'], $found['terms'], $caseInsensitive),
         ];
     }

@@ -54,14 +54,17 @@ try {
 $results = [];
 foreach ($found['rows'] as $row) {
     $path = (string) $row['file_path'];
+    $fileId = is_numeric($row['file_id'] ?? null) ? (int) $row['file_id'] : null;
+    $inode = $row['inode'] === null ? '' : (string) $row['inode'];
     $results[] = [
         'id' => null,
         'ref' => $path,
-        'url' => Reader::url($path),
+        'url' => Reader::url($path, $fileId, $inode),
         'book' => Paths::book($path),
         'file' => Paths::label($path, $sources === ['*']),
         'text' => $row['content'],
-        'inode' => $row['inode'] === null ? '' : (string) $row['inode'],
+        'file_id' => $fileId,
+        'inode' => $inode,
         'line' => (int) $row['line_number'],
         'matches' => Search::matchOffsets($row['content'], $found['terms'], true),
     ];

@@ -122,7 +122,7 @@ final class Search
 
         $limit = max(1, min($limit, 5000));
         $collation = self::COLLATION;
-        $sql = 'SELECT l.file_path, l.line_number, l.content, f.inode '
+        $sql = 'SELECT l.file_path, l.line_number, l.content, f.id AS file_id, f.inode '
             . 'FROM file_lines AS l JOIN files AS f ON f.path = l.file_path '
             . 'WHERE ' . implode(' AND ', $where) . ' '
             . "ORDER BY l.file_path COLLATE \"{$collation}\", l.line_number "

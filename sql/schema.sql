@@ -15,6 +15,14 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE INDEX IF NOT EXISTS files_inode_idx ON files (inode);
 CREATE INDEX IF NOT EXISTS files_seen_run_idx ON files (seen_run);
 
+-- Stable opaque key for reader links; additive and safe for existing databases.
+ALTER TABLE files ADD COLUMN IF NOT EXISTS id bigint;
+CREATE SEQUENCE IF NOT EXISTS files_id_seq;
+ALTER TABLE files ALTER COLUMN id SET DEFAULT nextval('files_id_seq');
+UPDATE files SET id = nextval('files_id_seq') WHERE id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS files_id_idx ON files (id);
+ALTER TABLE files ALTER COLUMN id SET NOT NULL;
+
 CREATE TABLE IF NOT EXISTS file_lines (
     id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     file_path   text NOT NULL REFERENCES files(path) ON DELETE CASCADE,

@@ -7,9 +7,11 @@ use TxtGrep\Reader;
 
 $fileParam = $_REQUEST['file'] ?? '';
 $inodeParam = $_REQUEST['inode'] ?? '';
+$idParam = $_REQUEST['id'] ?? '';
 $logical = Reader::resolve(
     is_string($fileParam) ? $fileParam : '',
-    is_string($inodeParam) ? $inodeParam : ''
+    is_string($inodeParam) ? $inodeParam : '',
+    is_string($idParam) ? $idParam : ''
 );
 if ($logical === null) {
     http_response_code(404);
@@ -18,8 +20,9 @@ if ($logical === null) {
 
 $content = Reader::content($logical);
 $title = basename($logical);
-$chapters = Reader::chapters($logical);
-$index = array_search($logical, $chapters, true);
+$chapters = Reader::chapterRows($logical);
+$paths = array_column($chapters, 'path');
+$index = array_search($logical, $paths, true);
 $previous = $index !== false && array_key_exists($index - 1, $chapters) ? $chapters[$index - 1] : null;
 $next = $index !== false && array_key_exists($index + 1, $chapters) ? $chapters[$index + 1] : null;
 $first = array_shift($content);
@@ -57,10 +60,10 @@ $first = array_shift($content);
     <?php if ($previous !== null || $next !== null): ?>
         <div class="uk-margin uk-margin-left uk-flex uk-flex-around">
             <?php if ($previous !== null): ?>
-                <div><a href="<?=htmlspecialchars(Reader::url($previous), ENT_QUOTES)?>">上一章</a></div>
+                <div><a href="<?=htmlspecialchars(Reader::url($previous['path'], $previous['id']), ENT_QUOTES)?>">上一章</a></div>
             <?php endif; ?>
             <?php if ($next !== null): ?>
-                <div><a href="<?=htmlspecialchars(Reader::url($next), ENT_QUOTES)?>">下一章</a></div>
+                <div><a href="<?=htmlspecialchars(Reader::url($next['path'], $next['id']), ENT_QUOTES)?>">下一章</a></div>
             <?php endif; ?>
         </div>
     <?php endif; ?>

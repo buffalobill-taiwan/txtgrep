@@ -6,11 +6,19 @@ namespace TxtGrep;
 /** Safe chapter lookup and natural-order navigation for reader.php. */
 final class Reader
 {
-    /** Resolve either an explicit logical path or a DB inode to a safe logical path. */
-    public static function resolve(string $file = '', string $inode = ''): ?string
+    /**
+     * Resolve a DB file id, a legacy inode, or an explicit logical path
+     * to a safe logical path.
+     */
+    public static function resolve(string $file = '', string $inode = '', string $id = ''): ?string
     {
-        if ($file !== '' && !str_contains($file, "\0") && Paths::absolute($file) !== null) {
-            return $file;
+        if ($id !== '' && ctype_digit($id)) {
+            $stmt = Database::get()->prepare('SELECT path FROM files WHERE id = :id');
+            $stmt->execute(['id' => (int) $id]);
+            $path = $stmt->fetchColumn();
+            if (is_string($path) && Paths::absolute($path) !== null) {
+                return $path;
+            }
         }
         if ($inode !== '' && ctype_digit($inode) && strlen($inode) <= 20) {
             $stmt = Database::get()->prepare(
@@ -22,28 +30,60 @@ final class Reader
                 return $path;
             }
         }
+        if ($file !== '' && !str_contains($file, "\0") && Paths::absolute($file) !== null) {
+            return $file;
+        }
         return null;
     }
 
-    /** @return string[] Logical paths in natural chapter order. */
-    public static function chapters(string $logical): array
+    /** Return the stable DB id for a logical path, if it is indexed. */
+    public static function id(string $logical): ?int
+    {
+        if (Paths::absolute($logical) === null) {
+            return null;
+        }
+        $stmt = Database::get()->prepare('SELECT id FROM files WHERE path = :path');
+        $stmt->execute(['path' => $logical]);
+        $value = $stmt->fetchColumn();
+        return is_numeric($value) ? (int) $value : null;
+    }
+
+    /**
+     * @return array<int, array{path: string, id: ?int}> Indexed chapters in natural order.
+     */
+    public static function chapterRows(string $logical): array
     {
         $relative = Paths::relative($logical);
         if ($relative === null || Paths::absolute($logical) === null) {
             return [];
         }
         $directory = dirname($relative);
-        $files = @scandir(Config::get()->corpus() . '/' . $directory, SCANDIR_SORT_NONE) ?: [];
         $prefix = Paths::prefix() . '/' . ($directory === '.' ? '' : $directory . '/');
-        $chapters = [];
-        foreach ($files as $file) {
-            $path = $prefix . $file;
-            if ($file[0] !== '.' && str_ends_with($file, '.txt') && Paths::absolute($path) !== null) {
-                $chapters[] = $path;
+        $stmt = Database::get()->prepare(
+            'SELECT f.path, f.id FROM files AS f '
+            . 'WHERE left(f.path, :len) = :prefix '
+            . 'AND EXISTS (SELECT 1 FROM file_lines AS l WHERE l.file_path = f.path) '
+            . 'ORDER BY f.path COLLATE "' . Search::COLLATION . '"'
+        );
+        $stmt->execute(['len' => mb_strlen($prefix, 'UTF-8'), 'prefix' => $prefix]);
+        $rows = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $path = (string) $row['path'];
+            if (Paths::relative($path) === null) {
+                continue;
             }
+            $rows[] = [
+                'path' => $path,
+                'id' => is_numeric($row['id'] ?? null) ? (int) $row['id'] : null,
+            ];
         }
-        usort($chapters, static fn (string $a, string $b): int => strnatcmp(basename($a), basename($b)));
-        return $chapters;
+        return $rows;
+    }
+
+    /** @return string[] Logical paths in natural chapter order. */
+    public static function chapters(string $logical): array
+    {
+        return array_column(self::chapterRows($logical), 'path');
     }
 
     /** @return string[] */
@@ -65,8 +105,14 @@ final class Reader
         }
     }
 
-    public static function url(string $logical): string
+    public static function url(string $logical, ?int $id = null, string $inode = ''): string
     {
+        if ($id !== null && $id > 0) {
+            return 'reader.php?id=' . $id;
+        }
+        if ($inode !== '' && ctype_digit($inode)) {
+            return 'reader.php?inode=' . rawurlencode($inode);
+        }
         return 'reader.php?file=' . rawurlencode($logical);
     }
 }

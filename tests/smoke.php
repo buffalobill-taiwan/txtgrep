@@ -63,8 +63,13 @@ try {
     $first = $indexer->run();
     check('initial index accepts internal aliases and removes escaped rows',
         $first['indexed_files'] === 3 && $first['removed_files'] === 2);
+    check('files have stable ids', (int) $pdo->query('SELECT count(*) FROM files WHERE id IS NULL')->fetchColumn() === 0);
     check('incremental run skips unchanged files', $indexer->run()['skipped_files'] === 3);
     $logical = 'fixture/甲/第2章.txt';
+    $chapterId = Reader::id($logical);
+    check('reader exposes and resolves stable id',
+        $chapterId !== null && str_contains(Reader::url($logical, $chapterId), '?id=')
+        && Reader::resolve('', '', (string) $chapterId) === $logical);
     $matches = Search::run('甲詞', ['*'], true, 10)['rows'];
     check('wildcard search stays within configured prefix', count($matches) === 3);
     $scoped = Search::run('甲詞', ['甲'], true, 10)['rows'];
@@ -76,6 +81,9 @@ try {
     check('reader uses same line boundaries', Reader::content($logical) === [str_repeat('a', 8191), '甲詞', '乙詞', '末行']);
     check('reader keeps an internal alias in chapter navigation',
         in_array('fixture/乙/alias.txt', Reader::chapters('fixture/乙/alias.txt'), true));
+    $chapterRows = Reader::chapterRows('fixture/乙/alias.txt');
+    check('chapter rows include stable ids', count($chapterRows) === 2
+        && $chapterRows[0]['id'] !== null && $chapterRows[1]['id'] !== null);
     check('reader rejects external chapters', Reader::resolve('fixture/甲/outside.txt') === null);
     check('natural chapter order', $pdo->query("SELECT string_agg(v, '|' ORDER BY v COLLATE txtgrep_natural)
         FROM (VALUES ('第10章'), ('第2章')) AS t(v)")->fetchColumn() === '第2章|第10章');

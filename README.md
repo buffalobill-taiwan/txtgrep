@@ -137,13 +137,13 @@ php bin/grep.php --max-count 20 --json '賈寶玉'
 php bin/grep.php -- '以-開頭的pattern'
 ```
 
-輸出為 `邏輯路徑:行號:內容`；`--json` 另附 `book`、`url` 與 highlight offsets。CLI 預設**區分大小寫**，`-i` 才不分；網頁搜尋固定不分大小寫。
+輸出為 `邏輯路徑:行號:內容`；`--json` 另附 `book`、`url`、`file_id` 與 highlight offsets。CLI 預設**區分大小寫**，`-i` 才不分；網頁搜尋固定不分大小寫。
 
 ## 網頁與 reader
 
 - `public/index.php`：搜尋首頁，結果不顯示行號（API / CLI 仍附 `line`）。
-- `public/grep.php`：POST JSON API，回傳與原版相容的欄位，另加 `url`、`book`。
-- `public/reader.php`：接受 `?file=txt/書名/章節.txt` 或相容的 `?inode=...`；用 DB + 自然排序找上下章，不再依賴 `find`/symlink。
+- `public/grep.php`：POST JSON API，回傳與原版相容的欄位，另加 `url`、`book`、`file_id`。
+- `public/reader.php`：建議接受 `?id=123`（`files.id`），並相容舊的 `?file=txt/書名/章節.txt` 與 `?inode=...`；搜尋結果的 `url` 已改用 `id`。上下章仍由 DB + 自然排序找出，不再依賴 `find`/symlink。
 
 ## Regex 語意（重要）
 
