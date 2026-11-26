@@ -28,15 +28,17 @@ final class Reader
     /** @return string[] Logical paths in natural chapter order. */
     public static function chapters(string $logical): array
     {
-        $absolute = Paths::absolute($logical);
-        if ($absolute === null) {
+        $relative = Paths::relative($logical);
+        if ($relative === null || Paths::absolute($logical) === null) {
             return [];
         }
-        $files = glob(dirname($absolute) . '/*.txt', GLOB_NOSORT) ?: [];
+        $directory = dirname($relative);
+        $files = @scandir(Config::get()->corpus() . '/' . $directory, SCANDIR_SORT_NONE) ?: [];
+        $prefix = Paths::prefix() . '/' . ($directory === '.' ? '' : $directory . '/');
         $chapters = [];
         foreach ($files as $file) {
-            $path = Paths::fromAbsolute($file);
-            if ($path !== null) {
+            $path = $prefix . $file;
+            if ($file[0] !== '.' && str_ends_with($file, '.txt') && Paths::absolute($path) !== null) {
                 $chapters[] = $path;
             }
         }
@@ -51,8 +53,16 @@ final class Reader
         if ($absolute === null) {
             return [];
         }
-        $raw = file_get_contents($absolute);
-        return $raw === false ? [] : Text::lines($raw);
+        $handle = @fopen($absolute, 'rb');
+        if ($handle === false) {
+            return [];
+        }
+        try {
+            $paragraphs = Text::paragraphs($handle);
+            return feof($handle) ? $paragraphs : [];
+        } finally {
+            fclose($handle);
+        }
     }
 
     public static function url(string $logical): string

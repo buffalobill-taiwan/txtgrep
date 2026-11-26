@@ -29,5 +29,11 @@ if ($failures > 0) {
     exit(1);
 }
 
-passthru(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__DIR__ . '/smoke.php'), $status);
-exit($status);
+if (in_array('--lint-only', $argv, true)) {
+    exit(0);
+}
+if (!extension_loaded('pdo_pgsql')) {
+    fwrite(STDERR, "Integration tests require the pdo_pgsql extension.\n");
+    exit(1);
+}
+require __DIR__ . '/smoke.php';

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
-use TxtGrep\Config;
+use TxtGrep\Indexer;
 use TxtGrep\Database;
 use TxtGrep\Paths;
 use TxtGrep\Reader;
@@ -21,95 +21,82 @@ function check(string $name, bool $ok, string $detail = ''): void
     printf("[%s] %s%s\n", $ok ? 'PASS' : 'FAIL', $name, $detail === '' ? '' : " ({$detail})");
 }
 
-/** Escape POSIX ARE metacharacters without touching multibyte characters. */
-function posixLiteral(string $value): string
-{
-    $special = ['\\', '.', '^', '$', '|', '?', '*', '+', '(', ')', '{', '}', '[', ']'];
-    $out = '';
-    foreach (preg_split('//u', $value, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $character) {
-        $out .= in_array($character, $special, true) ? '\\' . $character : $character;
-    }
-    return $out;
-}
-
-$collation = Search::COLLATION;
-$order = Database::get()->query(
-    "SELECT string_agg(v, '|' ORDER BY v COLLATE \"{$collation}\")
-     FROM (VALUES ('第10章.txt'), ('第2章.txt'), ('第1章.txt')) AS t(v)"
-)->fetchColumn();
-check('ICU natural collation', $order === '第1章.txt|第2章.txt|第10章.txt', (string) $order);
-
-$fileCount = (int) Database::get()->query('SELECT count(*) FROM files')->fetchColumn();
-$lineCount = (int) Database::get()->query('SELECT count(*) FROM file_lines')->fetchColumn();
-check('files indexed', $fileCount > 0, (string) $fileCount);
-check('lines indexed', $lineCount > 1000, (string) $lineCount);
-
-$books = Search::availableBooks();
-check('books discovered', $books !== [], implode(', ', $books));
-
-// Derive a literal from the corpus so the test works with any book collection.
-$literal = '';
-$samples = Database::get()->query('SELECT content FROM file_lines ORDER BY file_path LIMIT 100');
-while (($sample = $samples->fetchColumn()) !== false) {
-    if (preg_match('/[\p{Han}\p{L}\p{N}]{4}/u', (string) $sample, $matches) === 1) {
-        $literal = $matches[0];
-        break;
-    }
-}
-check('sample literal found', $literal !== '', $literal);
-
-if ($literal !== '') {
-    $pattern = posixLiteral($literal);
-    $found = Search::run($pattern, ['*'], true, 3);
-    check('search returns rows', $found['rows'] !== [], (string) count($found['rows']));
-    check('limit respected', count($found['rows']) <= 3 && (!$found['truncated'] || count($found['rows']) === 3));
-
-    $prefix = Paths::prefix() . '/';
-    $shapeOk = true;
-    foreach ($found['rows'] as $row) {
-        $shapeOk = $shapeOk
-            && str_starts_with((string) $row['file_path'], $prefix)
-            && (int) $row['line_number'] >= 1
-            && $row['inode'] !== null;
-    }
-    check('row shape (path / line / inode)', $shapeOk);
-
-    if ($books !== []) {
-        $scoped = Search::run($pattern, [$books[0]], true, 3);
-        $scopedOk = true;
-        foreach ($scoped['rows'] as $row) {
-            $scopedOk = $scopedOk && str_starts_with((string) $row['file_path'], $prefix . $books[0] . '/');
-        }
-        check('book filter', $scoped['rows'] !== [] && $scopedOk, (string) count($scoped['rows']));
-    }
-}
-
-$missing = Search::run('完全不會出現的字串zzzzqqqq', ['*'], true, 10);
-check('no-match query is empty', $missing['rows'] === []);
-
-try {
-    Search::validatePatterns(['(*LIMIT_MATCH=10)x'], true);
-    check('invalid regex rejected', false);
-} catch (SearchValidationException $error) {
-    check('invalid regex rejected', true);
-}
-
-if ($literal !== '') {
-    $highlights = Search::matchOffsets($literal, [$literal], true);
-    check(
-        'PCRE byte offsets',
-        count($highlights) === 1 && $highlights[0][0] === $literal && $highlights[0][1] === 0
+$root = sys_get_temp_dir() . '/txtgrep-' . bin2hex(random_bytes(8));
+mkdir($root, 0700);
+register_shutdown_function(static function () use ($root): void {
+    $entries = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST
     );
-}
+    foreach ($entries as $entry) {
+        $path = $entry->getPathname();
+        $entry->isDir() && !$entry->isLink() ? rmdir($path) : unlink($path);
+    }
+    rmdir($root);
+});
+mkdir("$root/corpus");
+mkdir("$root/corpus/甲");
+mkdir("$root/corpus/乙");
+mkdir("$root/external");
+file_put_contents("$root/external/private.txt", 'outside');
+file_put_contents("$root/corpus/甲/第2章.txt", str_repeat('a', 8191) . "\r\n甲詞\r乙詞\n\n末行");
+file_put_contents("$root/corpus/乙/第10章.txt", '甲詞');
+symlink('../甲/第2章.txt', "$root/corpus/乙/alias.txt");
+symlink("$root/external", "$root/corpus/外部");
+symlink("$root/external/private.txt", "$root/corpus/甲/outside.txt");
+putenv("TXTGREP_CORPUS=$root/corpus");
+putenv('TXTGREP_PATH_PREFIX=fixture');
 
-check('path traversal rejected', Paths::absolute(Paths::prefix() . '/../outside.txt') === null);
-check('text lines split', Text::lines("a\r\nb\n\rc\n") === ['a', 'b', 'c']);
-
-if ($fileCount > 0) {
-    $samplePath = (string) Database::get()->query('SELECT path FROM files ORDER BY path LIMIT 1')->fetchColumn();
-    check('reader resolves logical path', Reader::resolve($samplePath) === $samplePath);
-    check('reader has content', Reader::content($samplePath) !== []);
-    check('reader chapter list', in_array($samplePath, Reader::chapters($samplePath), true));
+$pdo = Database::get();
+$schema = 'txtgrep_test_' . bin2hex(random_bytes(8));
+$pdo->exec("CREATE SCHEMA $schema");
+try {
+    $pdo->exec("SET search_path TO $schema");
+    $pdo->exec(file_get_contents(dirname(__DIR__) . '/sql/schema.sql'));
+    $pdo->exec("INSERT INTO files (path, size, mtime) VALUES
+        ('other/甲/chapter.txt', 0, 0),
+        ('fixture/甲/outside.txt', 0, 0),
+        ('fixture/外部/private.txt', 0, 0)");
+    $pdo->exec("INSERT INTO file_lines (file_path, line_number, content)
+        VALUES ('other/甲/chapter.txt', 1, '甲詞')");
+    $indexer = new Indexer();
+    $first = $indexer->run();
+    check('initial index accepts internal aliases and removes escaped rows',
+        $first['indexed_files'] === 3 && $first['removed_files'] === 2);
+    check('incremental run skips unchanged files', $indexer->run()['skipped_files'] === 3);
+    $logical = 'fixture/甲/第2章.txt';
+    $matches = Search::run('甲詞', ['*'], true, 10)['rows'];
+    check('wildcard search stays within configured prefix', count($matches) === 3);
+    $scoped = Search::run('甲詞', ['甲'], true, 10)['rows'];
+    check('book filter and cross-buffer CRLF', count($scoped) === 1 && (int) $scoped[0]['line_number'] === 2);
+    check('separate CR-delimited terms do not match together',
+        Search::run('甲詞 乙詞', ['*'], true, 10)['rows'] === []);
+    $last = Search::run('末行', ['甲'], true, 10)['rows'];
+    check('blank line counted and unterminated line indexed', (int) ($last[0]['line_number'] ?? 0) === 5);
+    check('reader uses same line boundaries', Reader::content($logical) === [str_repeat('a', 8191), '甲詞', '乙詞', '末行']);
+    check('reader keeps an internal alias in chapter navigation',
+        in_array('fixture/乙/alias.txt', Reader::chapters('fixture/乙/alias.txt'), true));
+    check('reader rejects external chapters', Reader::resolve('fixture/甲/outside.txt') === null);
+    check('natural chapter order', $pdo->query("SELECT string_agg(v, '|' ORDER BY v COLLATE txtgrep_natural)
+        FROM (VALUES ('第10章'), ('第2章')) AS t(v)")->fetchColumn() === '第2章|第10章');
+    check('result cap', Search::run('甲詞', ['*'], true, 1)['truncated']);
+    try {
+        Search::validatePatterns(['['], true);
+        check('invalid regex rejected', false);
+    } catch (SearchValidationException $error) {
+        check('invalid regex rejected', true);
+    }
+    check('UTF-8 byte offsets', Search::matchOffsets('甲乙', ['乙'], true) === [['乙', 3]]);
+    unlink("$root/corpus/乙/第10章.txt");
+    symlink('temporarily-missing.txt', "$root/corpus/乙/第10章.txt");
+    check('unresolved chapter preserves old row', $indexer->run(false, false, ['乙'])['failed_files'] === 1
+        && count(Search::run('甲詞', ['乙'], true, 10)['rows']) === 2);
+    unlink("$root/corpus/乙/第10章.txt");
+    check('scoped cleanup removes deleted chapter only', $indexer->run(false, false, ['乙'])['removed_files'] === 1
+        && count(Search::run('甲詞', ['*'], true, 10)['rows']) === 2);
+} finally {
+    $pdo->exec('RESET search_path');
+    $pdo->exec("DROP SCHEMA $schema CASCADE");
 }
 
 printf("\n%d failure(s)\n", $failures);

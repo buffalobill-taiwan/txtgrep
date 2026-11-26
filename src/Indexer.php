@@ -34,8 +34,22 @@ final class Indexer
     private function index(bool $full, bool $hashCheck, array $books): array
     {
         $config = Config::get();
-        $corpus = $config->corpus();
-        $available = Search::availableBooks();
+        $corpus = realpath($config->corpus());
+        if ($corpus === false) {
+            throw new RuntimeException('Cannot resolve corpus directory.');
+        }
+        $entries = @scandir($corpus);
+        if ($entries === false) {
+            throw new RuntimeException('Cannot scan corpus directory.');
+        }
+        $available = array_values(array_filter($entries, static function (string $entry) use ($corpus): bool {
+            if ($entry[0] === '.') {
+                return false;
+            }
+            $path = $corpus . '/' . $entry;
+            return is_dir($path) || (is_link($path) && !file_exists($path));
+        }));
+        usort($available, 'strnatcmp');
 
         if ($books !== []) {
             $unknown = array_values(array_diff($books, $available));
@@ -72,7 +86,12 @@ final class Indexer
 
         foreach ($selected as $book) {
             $directory = $corpus . '/' . $book;
-            $chapters = scandir($directory, SCANDIR_SORT_NONE);
+            clearstatcache(true);
+            $resolvedDirectory = realpath($directory);
+            if ($resolvedDirectory !== false && !Paths::inside($resolvedDirectory, $corpus)) {
+                continue;
+            }
+            $chapters = $resolvedDirectory === false ? false : @scandir($resolvedDirectory, SCANDIR_SORT_NONE);
             if ($chapters === false) {
                 $failedBooks[] = $book;
                 $failedFiles++;
@@ -87,11 +106,15 @@ final class Indexer
 
             foreach ($chapters as $chapter) {
                 $relative = Paths::logical($book, $chapter);
-                $absolute = $directory . '/' . $chapter;
-                clearstatcache(true, $absolute);
-                $size = filesize($absolute);
-                $mtime = filemtime($absolute);
-                $inode = fileinode($absolute);
+                clearstatcache(true);
+                $candidate = realpath($resolvedDirectory . '/' . $chapter);
+                if ($candidate !== false && (!Paths::inside($candidate, $corpus) || !is_file($candidate))) {
+                    continue;
+                }
+                $absolute = Paths::absolute($relative);
+                $size = $absolute === null ? false : @filesize($absolute);
+                $mtime = $absolute === null ? false : @filemtime($absolute);
+                $inode = $absolute === null ? false : @fileinode($absolute);
                 if ($size === false || $mtime === false || $inode === false) {
                     $preserve->execute(['run' => $run, 'path' => $relative]);
                     fwrite(STDERR, "Cannot stat {$relative}\n");
@@ -142,9 +165,9 @@ final class Indexer
                     $lineNumber = 0;
                     $batch = [];
                     try {
-                        while (($line = fgets($handle)) !== false) {
+                        foreach (Text::streamLines($handle) as $line) {
                             $lineNumber++;
-                            $batch[] = [$lineNumber, Text::scrub(rtrim($line, "\r\n"))];
+                            $batch[] = [$lineNumber, Text::scrub($line)];
                             if (count($batch) >= self::BATCH_SIZE) {
                                 self::insertBatch($relative, $batch);
                                 $batch = [];

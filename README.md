@@ -4,7 +4,7 @@
 
 特色：
 
-- 每一行存成一個 DB row，由 PostgreSQL 做 regex 過濾與自然排序，稀有詞不再全場掃描。
+- 每一行存成一個 DB row，由 PostgreSQL 做 regex 過濾與自然排序，正規表示式查詢可能需要掃描索引中的文字列。
 - 網頁搜尋、章節 reader、rg 風格 CLI 共用同一套搜尋邏輯。
 - 所有路徑、DSN、連線帳密、port、結果上限都走環境變數；沒有寫死的本機 hostname 或 DB 名稱。
 - 可用 Composer、Makefile、pm2、nginx 範例或 Docker Compose 啟動。
@@ -126,6 +126,8 @@ php bin/index.php 西遊記               # 只處理一部；不會誤刪其他
 - 單一檔案以 transaction 重建。取得檔案資訊、讀取雜湊或重建失敗時保留舊索引，並繼續處理其他檔案。
 - 無效 UTF-8 bytes 會被轉成 U+FFFD，行號仍與原檔一致。
 
+換行處理升級後，執行一次 `php bin/index.php --full` 更新已存在的行號。
+
 ## CLI
 
 ```sh
@@ -153,7 +155,7 @@ php bin/grep.php -- '以-開頭的pattern'
 | PCRE 控制動詞 | 不支援，例如 `(*LIMIT_MATCH=...)` 會被拒絕 |
 | 常見用法 | `(?:...)`、`\d`、`.{2,}?` 等兩邊皆可用 |
 
-送出前會先讓 PostgreSQL 編譯一次 pattern，無效 regex 回 400。高亮偏移只對回傳的 rows 用 PHP PCRE 重算；PCRE 不相容時單純不高亮，不影響搜尋結果。
+送出前會先讓 PostgreSQL 編譯一次 pattern，無效 regex 回 400。高亮偏移只對回傳的 rows 用 PHP PCRE 重算；兩種引擎的語意不同，可能缺少高亮或標記不同的位置。
 
 ## 測試
 
@@ -162,7 +164,7 @@ php tests/run.php          # 先 php -l 所有檔案，再跑 smoke
 sh tests/benchmark.sh http://127.0.0.1:8083 local
 ```
 
-`tests/smoke.php` 會從現有索引挑一段文字測試搜尋、書目篩選、限制、regex 驗證、路徑遍歷防護與 reader，因此換語料也能用。
+`tests/smoke.php` 使用固定的小型語料和獨立的暫用 schema，測試完成後會清理。測試帳號需有建立 schema 的權限。可用 `make lint` 單獨執行語法檢查。
 
 ## 部署模板
 

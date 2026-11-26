@@ -98,8 +98,9 @@ final class Search
         }
         self::validatePatterns($terms, $caseInsensitive);
 
-        $where = [];
-        $params = [];
+        $prefix = Paths::prefix() . '/';
+        $where = ['left(l.file_path, :root_len) = :root'];
+        $params = ['root_len' => mb_strlen($prefix, 'UTF-8'), 'root' => $prefix];
         $operator = $caseInsensitive ? '~*' : '~';
         foreach ($terms as $index => $term) {
             $placeholder = ':t' . $index;

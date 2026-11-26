@@ -47,17 +47,15 @@ final class Paths
             return null;
         }
         $corpus = realpath(Config::get()->corpus());
-        if ($corpus === false) {
-            return null;
-        }
-        $candidate = realpath($corpus . '/' . $relative);
-        if ($candidate === false || !is_file($candidate)) {
-            return null;
-        }
-        if (!str_starts_with($candidate, $corpus . DIRECTORY_SEPARATOR)) {
-            return null;
-        }
-        return $candidate;
+        $candidate = realpath(Config::get()->corpus() . '/' . $relative);
+        return $corpus !== false && $candidate !== false
+            && self::inside($candidate, $corpus) && is_file($candidate)
+            ? $candidate : null;
+    }
+
+    public static function inside(string $candidate, string $corpus): bool
+    {
+        return str_starts_with($candidate, rtrim($corpus, '/') . '/');
     }
 
     /** Convert an absolute path inside the corpus back to a logical path. */
@@ -66,7 +64,7 @@ final class Paths
         $corpus = realpath(Config::get()->corpus());
         $real = realpath($absolute);
         if ($corpus === false || $real === false
-            || !str_starts_with($real, $corpus . DIRECTORY_SEPARATOR)) {
+            || !self::inside($real, $corpus)) {
             return null;
         }
         return self::prefix() . '/' . str_replace(DIRECTORY_SEPARATOR, '/', substr($real, strlen($corpus) + 1));
