@@ -113,7 +113,7 @@ txt/
 ## 匯入 / 更新索引
 
 ```sh
-php bin/index.php                     # 只重建 size 或 mtime 改變的章節
+php bin/index.php                     # 只重建 size、mtime 或 inode 改變的章節
 php bin/index.php --hash-check        # 額外用 sha256 確認內容
 php bin/index.php --full 三國演義      # 強制重建一部
 php bin/index.php --full              # 全部重建
@@ -125,6 +125,8 @@ php bin/index.php 西遊記               # 只處理一部；不會誤刪其他
 - 只指定部分書目時，清理範圍也只限那些書目。
 - 單一檔案以 transaction 重建。取得檔案資訊、讀取雜湊或重建失敗時保留舊索引，並繼續處理其他檔案。
 - 無效 UTF-8 bytes 會被轉成 U+FFFD，行號仍與原檔一致。
+
+既有資料庫請先執行 `php bin/setup.php`，為單書搜尋建立章節目錄索引。
 
 換行處理升級後，執行一次 `php bin/index.php --full` 更新已存在的行號。
 

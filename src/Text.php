@@ -18,11 +18,14 @@ final class Text
     /** @param resource $handle
      *  @return \Generator<int, string>
      */
-    public static function streamLines($handle): \Generator
+    public static function streamLines($handle, ?\HashContext $hash = null): \Generator
     {
         $pending = '';
         $afterCr = false;
         while (($chunk = fread($handle, 8192)) !== false && $chunk !== '') {
+            if ($hash !== null) {
+                hash_update($hash, $chunk);
+            }
             if ($afterCr && $chunk[0] === "\n") {
                 $chunk = substr($chunk, 1);
             }

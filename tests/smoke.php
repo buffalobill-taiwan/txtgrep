@@ -95,10 +95,23 @@ try {
         check('invalid regex rejected', true);
     }
     check('UTF-8 byte offsets', Search::matchOffsets('甲乙', ['乙'], true) === [['乙', 3]]);
+    $raw = "$root/corpus/甲/第2章.txt";
+    $indexedHash = $pdo->query("SELECT hash FROM files WHERE path = 'fixture/甲/第2章.txt'")->fetchColumn();
+    check('index hashes raw bytes across CRLF boundaries', $indexedHash === hash_file('sha256', $raw));
+
+    $chapter = "$root/corpus/乙/第10章.txt";
+    $replacement = "$root/replacement.txt";
+    file_put_contents($replacement, '丙詞');
+    touch($replacement, filemtime($chapter));
+    rename($replacement, $chapter);
+    check('same-size and same-mtime replacement is reindexed',
+        $indexer->run(false, false, ['乙'])['indexed_files'] === 1
+        && count(Search::run('丙詞', ['乙'], true, 10)['rows']) === 1);
+
     unlink("$root/corpus/乙/第10章.txt");
     symlink('temporarily-missing.txt', "$root/corpus/乙/第10章.txt");
     check('unresolved chapter preserves old row', $indexer->run(false, false, ['乙'])['failed_files'] === 1
-        && count(Search::run('甲詞', ['乙'], true, 10)['rows']) === 2);
+        && count(Search::run('丙詞', ['乙'], true, 10)['rows']) === 1);
     unlink("$root/corpus/乙/第10章.txt");
     check('scoped cleanup removes deleted chapter only', $indexer->run(false, false, ['乙'])['removed_files'] === 1
         && count(Search::run('甲詞', ['*'], true, 10)['rows']) === 2);

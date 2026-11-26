@@ -76,7 +76,7 @@ final class Indexer
 
         $root = Paths::prefix() . '/';
         $existingStmt = Database::get()->prepare(
-            'SELECT path, size, mtime, hash FROM files WHERE left(path, :len) = :root'
+            'SELECT path, size, mtime, inode, hash FROM files WHERE left(path, :len) = :root'
         );
         $existingStmt->execute(['len' => mb_strlen($root, 'UTF-8'), 'root' => $root]);
         $existingByPath = [];
@@ -93,6 +93,7 @@ final class Indexer
                  size = EXCLUDED.size, mtime = EXCLUDED.mtime, inode = EXCLUDED.inode,
                  hash = EXCLUDED.hash, seen_run = EXCLUDED.seen_run, indexed_at = now()'
         );
+        $updateHash = Database::get()->prepare('UPDATE files SET hash = :hash WHERE path = :path');
         $deleteLines = Database::get()->prepare('DELETE FROM file_lines WHERE file_path = :path');
 
         foreach ($selected as $book) {
@@ -129,36 +130,27 @@ final class Indexer
                     }
                     $absolute = null;
                 }
-                $size = $absolute === null ? false : @filesize($absolute);
-                $mtime = $absolute === null ? false : @filemtime($absolute);
-                $inode = $absolute === null ? false : @fileinode($absolute);
-                if ($size === false || $mtime === false || $inode === false) {
+                $stat = $absolute === null ? false : @stat($absolute);
+                if ($stat === false) {
                     $preserve->execute(['run' => $run, 'path' => $relative]);
                     fwrite(STDERR, "Cannot stat {$relative}\n");
                     $failedFiles++;
                     continue;
                 }
+                ['size' => $size, 'mtime' => $mtime, 'ino' => $inode] = $stat;
 
                 $existing = $existingByPath[$relative] ?? false;
                 $unchanged = !$full && $existing !== false
                     && (int) $existing['size'] === $size
-                    && (int) $existing['mtime'] === $mtime;
-                $hash = null;
+                    && (int) $existing['mtime'] === $mtime
+                    && $existing['inode'] === (string) $inode;
                 if ($unchanged && $hashCheck) {
-                    $hash = hash_file('sha256', $absolute);
+                    $hash = @hash_file('sha256', $absolute);
                     $unchanged = $hash !== false && $hash === $existing['hash'];
                 }
                 if ($unchanged) {
                     $seenUpdates[$relative] = (string) $inode;
                     $skippedFiles++;
-                    continue;
-                }
-
-                $hash ??= hash_file('sha256', $absolute);
-                if ($hash === false) {
-                    $preserve->execute(['run' => $run, 'path' => $relative]);
-                    fwrite(STDERR, "Cannot hash {$relative}\n");
-                    $failedFiles++;
                     continue;
                 }
 
@@ -169,19 +161,23 @@ final class Indexer
                         'size' => $size,
                         'mtime' => $mtime,
                         'inode' => (string) $inode,
-                        'hash' => $hash,
+                        'hash' => null,
                         'run' => $run,
                     ]);
                     $deleteLines->execute(['path' => $relative]);
 
-                    $handle = fopen($absolute, 'rb');
+                    $handle = @fopen($absolute, 'rb');
                     if ($handle === false) {
                         throw new RuntimeException("Cannot open {$relative}");
                     }
                     $lineNumber = 0;
                     $batch = [];
                     try {
-                        foreach (Text::streamLines($handle) as $line) {
+                        if (!self::sameSnapshot($stat, fstat($handle))) {
+                            throw new RuntimeException("File changed before reading {$relative}");
+                        }
+                        $hash = hash_init('sha256');
+                        foreach (Text::streamLines($handle, $hash) as $line) {
                             $lineNumber++;
                             $batch[] = [$lineNumber, Text::scrub($line)];
                             if (count($batch) >= self::BATCH_SIZE) {
@@ -189,14 +185,20 @@ final class Indexer
                                 $batch = [];
                             }
                         }
-                        $complete = feof($handle);
+                        if (!feof($handle)) {
+                            throw new RuntimeException("Cannot finish reading {$relative}");
+                        }
+                        clearstatcache(true);
+                        if (!self::sameSnapshot($stat, fstat($handle))
+                            || realpath($directory . '/' . $chapter) !== $absolute
+                            || !self::sameSnapshot($stat, @stat($absolute))) {
+                            throw new RuntimeException("File changed during reading {$relative}");
+                        }
                     } finally {
                         fclose($handle);
                     }
-                    if (!$complete) {
-                        throw new RuntimeException("Cannot finish reading {$relative}");
-                    }
                     self::insertBatch($relative, $batch);
+                    $updateHash->execute(['hash' => hash_final($hash), 'path' => $relative]);
                     Database::get()->commit();
                     $indexedLines += $lineNumber;
                     $indexedFiles++;
@@ -226,6 +228,19 @@ final class Indexer
             'removed_files' => $removedFiles,
             'seconds' => $seconds,
         ];
+    }
+
+    private static function sameSnapshot(array $expected, array|false $actual): bool
+    {
+        if ($actual === false) {
+            return false;
+        }
+        foreach (['dev', 'ino', 'size', 'mtime', 'ctime'] as $field) {
+            if ($expected[$field] !== $actual[$field]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** @param array<int, array{0: int, 1: string}> $batch */

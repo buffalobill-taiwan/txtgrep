@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS files (
     indexed_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE INDEX IF NOT EXISTS files_book_path_idx
+    ON files (regexp_replace(path, '/[^/]+$', ''));
+
 CREATE INDEX IF NOT EXISTS files_inode_idx ON files (inode);
 CREATE INDEX IF NOT EXISTS files_seen_run_idx ON files (seen_run);
 

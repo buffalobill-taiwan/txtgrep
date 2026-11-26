@@ -96,34 +96,46 @@ final class Search
         if ($terms === []) {
             throw new SearchValidationException('請輸入關鍵字。');
         }
+        if ($sources === []) {
+            throw new SearchValidationException('請選擇書目。');
+        }
         self::validatePatterns($terms, $caseInsensitive);
 
-        $prefix = Paths::prefix() . '/';
-        $where = ['left(l.file_path, :root_len) = :root'];
-        $params = ['root_len' => mb_strlen($prefix, 'UTF-8'), 'root' => $prefix];
+        $where = [];
+        $params = [];
         $operator = $caseInsensitive ? '~*' : '~';
         foreach ($terms as $index => $term) {
             $placeholder = ':t' . $index;
             $where[] = "l.content {$operator} {$placeholder}";
             $params[$placeholder] = $term;
         }
-        if ($sources !== ['*']) {
+        $from = 'file_lines AS l JOIN files AS f ON f.path = l.file_path';
+        if ($sources === ['*']) {
+            $prefix = Paths::prefix() . '/';
+            $where[] = 'left(l.file_path, :root_len) = :root';
+            $params['root_len'] = mb_strlen($prefix, 'UTF-8');
+            $params['root'] = $prefix;
+        } else {
             $filters = [];
             foreach ($sources as $index => $book) {
-                $prefixParam = ':p' . $index;
-                $lengthParam = ':l' . $index;
-                $prefix = Paths::prefix() . '/' . $book . '/';
-                $filters[] = "left(l.file_path, {$lengthParam}) = {$prefixParam}";
-                $params[$prefixParam] = $prefix;
-                $params[$lengthParam] = mb_strlen($prefix, 'UTF-8');
+                $placeholder = ':book' . $index;
+                $filters[] = $placeholder;
+                $params[$placeholder] = Paths::prefix() . '/' . $book;
             }
-            $where[] = '(' . implode(' OR ', $filters) . ')';
+            // Keep the line scan correlated so even a zero-hit search stays within the selected books.
+            $lineFilters = implode(' AND ', $where);
+            $where = [];
+            $from = 'files AS f CROSS JOIN LATERAL ('
+                . 'SELECT file_path, line_number, content FROM file_lines AS l WHERE l.file_path = f.path AND '
+                . $lineFilters . ' OFFSET 0'
+                . ') AS l';
+            $where[] = "regexp_replace(f.path, '/[^/]+$', '') IN (" . implode(', ', $filters) . ')';
         }
 
         $limit = max(1, min($limit, 5000));
         $collation = self::COLLATION;
         $sql = 'SELECT l.file_path, l.line_number, l.content, f.id AS file_id, f.inode '
-            . 'FROM file_lines AS l JOIN files AS f ON f.path = l.file_path '
+            . 'FROM ' . $from . ' '
             . 'WHERE ' . implode(' AND ', $where) . ' '
             . "ORDER BY l.file_path COLLATE \"{$collation}\", l.line_number "
             . 'LIMIT ' . ($limit + 1);
