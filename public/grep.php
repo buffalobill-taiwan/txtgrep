@@ -59,7 +59,7 @@ foreach ($found['rows'] as $row) {
         'ref' => $path,
         'url' => Reader::url($path),
         'book' => Paths::book($path),
-        'file' => Paths::label($path, $sources !== ['*']),
+        'file' => Paths::label($path, $sources === ['*']),
         'text' => $row['content'],
         'inode' => $row['inode'] === null ? '' : (string) $row['inode'],
         'line' => (int) $row['line_number'],
