@@ -10,7 +10,7 @@ $keyword = $_REQUEST['keyword'] ?? '';
 $keyword = is_string($keyword) ? $keyword : '';
 ?>
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-Hant-TW">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">

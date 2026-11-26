@@ -29,7 +29,7 @@ $next = $index !== false && array_key_exists($index + 1, $chapters) ? $chapters[
 $first = array_shift($content);
 ?>
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-Hant-TW">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
