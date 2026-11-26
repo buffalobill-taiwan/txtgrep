@@ -65,6 +65,8 @@ body {
   box-sizing: border-box;
   display: flex;
   flex-direction: row; /* inline axis: top-to-bottom in vertical-rl */
+  justify-content: center;
+  align-items: center;
   gap: 0.25rem;
   inline-size: 40vh; /* 40% of the full page height */
   block-size: 3.5rem;
