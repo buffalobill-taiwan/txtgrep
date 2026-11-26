@@ -58,7 +58,7 @@ composer test
 docker compose up -d --build
 ```
 
-複製 `.env.example` 為 `.env` 後可調整 `TXTGREP_DB_NAME`、`TXTGREP_DB_USER`、`TXTGREP_DB_PASSWORD`、`TXTGREP_PORT`。容器啟動時會自動執行 `bin/setup.php` 與增量 `bin/index.php`，然後在 <http://127.0.0.1:8083/> 提供服務。
+複製 `.env.example` 為 `.env` 後可調整 `TXTGREP_DB_NAME`、`TXTGREP_DB_USER`、`TXTGREP_DB_PASSWORD`、`TXTGREP_PORT` 與 `TXTGREP_CORPUS`。`TXTGREP_CORPUS` 可以是相對路徑（以專案根為準，例如預設的 `txt`）或宿主機絕對路徑；Compose 會把該目錄唯讀掛到容器的 `/corpus`，但 DB 與 URL 前綴仍由 `TXTGREP_PATH_PREFIX` 決定（預設 `txt`）。容器啟動時會自動執行 `bin/setup.php` 與增量 `bin/index.php`，然後依 `TXTGREP_PORT` 提供服務（預設 8083）。
 
 ### 舊版 Compose 掛載移轉
 
@@ -92,7 +92,7 @@ docker compose exec -T db sh -c 'psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -
 | `TXTGREP_DSN` | `pgsql:dbname=txtgrep` | PDO PostgreSQL DSN；Unix socket 或 TCP 都可以 |
 | `TXTGREP_DB_USER` | 空 | DB 帳號；空白表示交給 peer auth / DSN |
 | `TXTGREP_DB_PASSWORD` | 空 | DB 密碼 |
-| `TXTGREP_CORPUS` | `txt` | 語料根目錄；相對路徑以專案根為準 |
+| `TXTGREP_CORPUS` | `txt` | 語料根目錄；相對路徑以專案根為準。Docker Compose 會把此路徑唯讀掛到容器 `/corpus` |
 | `TXTGREP_PATH_PREFIX` | `txt` | DB 與 URL 中的邏輯前綴 |
 | `TXTGREP_PORT` | `8083` | `php -S` 與 pm2 使用的 port |
 | `TXTGREP_LIMIT` | `500` | 每次搜尋的全域上限（最大 5000） |
@@ -108,7 +108,7 @@ txt/
 └── 西遊記/第001回 ... .txt
 ```
 
-新增書目只要加一個子目錄再重新執行索引即可；不需要改程式。
+新增書目只要加一個子目錄再重新執行索引即可；不需要改程式。內建的 `txt/` 只是範例，讓 `TXTGREP_CORPUS` 指向任何符合「書目子目錄 + `.txt` 章節」結構的目錄即可，例如 `TXTGREP_CORPUS=/srv/corpora/novels`。Docker 路徑同樣由這個變數提供，容器內固定看到 `/corpus`。
 
 ## 匯入 / 更新索引
 
@@ -170,7 +170,7 @@ sh tests/benchmark.sh http://127.0.0.1:8083 local
 
 - `ecosystem.config.js`：pm2 + `php -S`，讀 `TXTGREP_PORT` / `PHP_BIN` / `TXTGREP_APP_NAME`。
 - `deploy/nginx.conf.example`：通用反向代理；請自行替換 `server_name`、TLS 憑證與 `proxy_pass`。
-- `Dockerfile` / `docker-compose.yml`：PostgreSQL + PHP + 自動索引。
+- `Dockerfile` / `docker-compose.yml`：PostgreSQL + PHP + 自動索引；語料由 `TXTGREP_CORPUS` 唯讀掛入容器 `/corpus`。
 
 ## 目錄結構
 
