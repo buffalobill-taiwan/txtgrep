@@ -64,15 +64,18 @@ $first = array_shift($content);
             </nav>
         <?php endif; ?>
     <?php }; ?>
-    <main class="reader">
-        <?php $renderNavigation(true); ?>
-        <?php if ($first !== null): ?>
-            <h1 class="reader-title"><?=htmlspecialchars($first, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></h1>
-        <?php endif; ?>
-        <?php foreach ($content as $line): ?>
-            <p class="reader-paragraph"><?=htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></p>
-        <?php endforeach; ?>
-        <?php $renderNavigation(false); ?>
-    </main>
+    <div class="reader-scroll">
+        <main class="reader">
+            <?php $renderNavigation(true); ?>
+            <?php if ($first !== null): ?>
+                <h1 class="reader-title"><?=htmlspecialchars($first, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></h1>
+            <?php endif; ?>
+            <?php foreach ($content as $line): ?>
+                <p class="reader-paragraph"><?=htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></p>
+            <?php endforeach; ?>
+            <?php $renderNavigation(false); ?>
+        </main>
+        <div class="reader-scroll-space" aria-hidden="true"></div>
+    </div>
 </body>
 </html>

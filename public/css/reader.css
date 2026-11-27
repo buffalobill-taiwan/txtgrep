@@ -4,6 +4,27 @@ body {
   overflow: hidden;
 }
 
+.reader-scroll {
+  height: 100%;
+}
+
+.reader-scroll.is-synced {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+}
+
+.reader-scroll.is-synced::-webkit-scrollbar {
+  display: none;
+}
+
+.reader-scroll.is-synced > .reader {
+  position: sticky;
+  top: 0;
+  overscroll-behavior-x: none;
+}
+
 /* Vertical chapter reader. Uses logical properties so spacing follows writing-mode. */
 .reader {
   --reader-font-size: clamp(1.25rem, 1.125rem + 0.5vw, 1.5rem);
