@@ -39,15 +39,10 @@ $first = array_shift($content);
     <script src="js/reader.js?<?=filemtime(__DIR__ . '/js/reader.js') ?: 1 ?>" defer></script>
 </head>
 <body>
-    <main class="reader">
-        <?php if ($first !== null): ?>
-            <h1 class="reader-title"><?=htmlspecialchars($first, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></h1>
-        <?php endif; ?>
-        <?php foreach ($content as $line): ?>
-            <p class="reader-paragraph"><?=htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></p>
-        <?php endforeach; ?>
+    <?php $renderNavigation = static function (bool $atStart) use ($previous, $next): void { ?>
         <?php if ($previous !== null || $next !== null): ?>
-            <nav class="reader-nav" aria-label="章節導覽">
+            <nav class="reader-nav<?= $atStart ? ' reader-nav-start' : '' ?>"
+                 aria-label="<?= $atStart ? '章首導覽' : '章末導覽' ?>">
                 <?php if ($previous !== null): ?>
                     <a class="reader-nav-link" rel="prev"
                        aria-label="<?=htmlspecialchars('上一章：' . Paths::label($previous['path'], false), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?>"
@@ -68,6 +63,16 @@ $first = array_shift($content);
                 <?php endif; ?>
             </nav>
         <?php endif; ?>
+    <?php }; ?>
+    <main class="reader">
+        <?php $renderNavigation(true); ?>
+        <?php if ($first !== null): ?>
+            <h1 class="reader-title"><?=htmlspecialchars($first, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></h1>
+        <?php endif; ?>
+        <?php foreach ($content as $line): ?>
+            <p class="reader-paragraph"><?=htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')?></p>
+        <?php endforeach; ?>
+        <?php $renderNavigation(false); ?>
     </main>
 </body>
 </html>
